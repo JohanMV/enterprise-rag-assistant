@@ -2,6 +2,9 @@
 
 > **Enterprise-grade Retrieval-Augmented Generation (RAG) MVP for querying internal business documents with grounded answers, semantic retrieval and source traceability.**
 
+[🇬🇧 Version en Español](README.es.md)
+
+
 ## Overview
 
 **Enterprise RAG Assistant** is an AI Engineering project designed to transform internal business documentation into a searchable knowledge base that can be queried using natural language.
