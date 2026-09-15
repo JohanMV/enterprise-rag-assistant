@@ -1,0 +1,167 @@
+# ==============================================================================
+# 1. Variables de entorno y credenciales (ALTAMENTE CONFIDENCIAL)
+# ==============================================================================
+.env
+.env.*
+*.env
+# Excepto plantillas de configuración pública
+!.env.example
+!.env.template
+
+# Certificados, llaves privadas y cuentas de servicio
+*.pem
+*.key
+*.p12
+*.crt
+service_account*.json
+credentials*.json
+client_secrets*.json
+firebase-adminsdk*.json
+
+# ==============================================================================
+# 2. Bases de Datos Vectoriales y Almacenamiento Local (RAG)
+# (Evita subir datos de clientes, PII y vectores indexados)
+# ==============================================================================
+# ChromaDB
+chroma_db/
+chroma/
+.chroma/
+
+# FAISS
+faiss_index/
+*.faiss
+*.index
+
+# LanceDB / Qdrant / Milvus local
+lancedb/
+*.lance
+qdrant_storage/
+milvus_data/
+
+# SQLite / DuckDB y bases de datos relacionales locales
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.duckdb
+
+# Caché de embeddings y serializaciones binarias
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.parquet
+cache/
+.cache/
+
+# ==============================================================================
+# 3. Documentos y datos ingeridos (Datos corporativos sensibles)
+# ==============================================================================
+# Ignorar subidas de usuarios o datos no de muestra
+data/raw/
+data/processed/
+data/uploads/
+data/temp/
+
+# Si agregas documentos privados en data/, mantén solo los sample_docs de demostración:
+# data/*
+# !data/sample_docs/
+# !data/.gitkeep
+
+# ==============================================================================
+# 4. Modelos locales y pesos LLM (GGUF, PyTorch, Hugging Face)
+# ==============================================================================
+models/
+*.gguf
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+.huggingface/
+hf_cache/
+
+# ==============================================================================
+# 5. Logs, Trazas y Observabilidad (Pueden contener prompts y PII)
+# ==============================================================================
+logs/
+*.log
+*.log.*
+wandb/
+.langchain/
+phoenix_data/
+eval_results/
+
+# ==============================================================================
+# 6. Entorno virtual de Python y compilación
+# ==============================================================================
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Pruebas y tipado
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================================================================
+# 7. Frontend / UI (Node, React, Vue, Vite, etc.)
+# ==============================================================================
+node_modules/
+ui/node_modules/
+ui/dist/
+ui/build/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ==============================================================================
+# 8. IDEs y Sistema Operativo
+# ==============================================================================
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
