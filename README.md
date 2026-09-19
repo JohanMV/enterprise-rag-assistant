@@ -2,7 +2,7 @@
 
 > **Enterprise-grade Retrieval-Augmented Generation (RAG) MVP for querying internal business documents with grounded answers, semantic retrieval and source traceability.**
 
-[🇬🇧 Version en Español](README.es.md)
+[🇪🇸 Versión en español](README.es.md)
 
 
 ## Overview
@@ -109,17 +109,33 @@ Text chunks + metadata
 
 ### 3. Embeddings
 
-Each chunk will be transformed into a dense vector representation.
+Each chunk is transformed into a dense vector representation using:
+
+```text
+sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+```
+
+The model generates **384-dimensional embeddings** for both document chunks and user queries.
 
 ```text
 Chunk
   ↓
-Embedding Model
+Multilingual MiniLM Embedding Model
   ↓
-[0.021, -0.113, 0.874, ...]
+384-dimensional vector
 ```
 
-This allows the system to compare text by **semantic similarity**, not only exact keywords.
+This allows the system to compare text by **semantic similarity**, not only exact keywords. All document chunks and user queries must use the same embedding model so they are represented in the same vector space.
+
+Current validation result:
+
+```text
+18 chunks
+   ↓
+18 embeddings
+   ↓
+384 dimensions per vector
+```
 
 ### 4. Vector storage
 
@@ -179,7 +195,7 @@ The model will be instructed to answer only from retrieved evidence. If context 
 | RAG framework | LangChain | RAG orchestration and integrations |
 | Document parsing | PyPDFLoader | PDF ingestion |
 | Text splitting | RecursiveCharacterTextSplitter | Chunk generation |
-| Embeddings | OpenAI / Hugging Face | Semantic vector representation |
+| Embeddings | Hugging Face · paraphrase-multilingual-MiniLM-L12-v2 | 384-dimensional semantic vector representation |
 | Vector database | Qdrant | Vector storage and similarity search |
 | API | FastAPI | REST backend |
 | Relational database | PostgreSQL | Conversations and document metadata |
@@ -196,8 +212,8 @@ The model will be instructed to answer only from retrieved evidence. If context 
 | 0 | Project setup | ✅ Completed |
 | 1 | PDF Loader | ✅ Completed |
 | 2 | Chunking | ✅ Completed |
-| 3 | Embeddings | ⏳ Next |
-| 4 | Qdrant vector storage | ⏳ Planned |
+| 3 | Embeddings | ✅ Completed |
+| 4 | Qdrant vector storage | ⏳ Next |
 | 5 | Semantic retrieval | ⏳ Planned |
 | 6 | RAG + LLM generation | ⏳ Planned |
 | 7 | FastAPI | ⏳ Planned |
@@ -213,6 +229,10 @@ The model will be instructed to answer only from retrieved evidence. If context 
 PDF Loader
       ↓
 18 text chunks
+      ↓
+Hugging Face embedding model
+      ↓
+18 vectors × 384 dimensions
       ↓
 Metadata preserved
 ```
@@ -230,7 +250,10 @@ enterprise-rag-assistant/
 │   │   ├── database/
 │   │   ├── rag/
 │   │   │   ├── loader.py
-│   │   │   └── splitter.py
+│   │   │   ├── splitter.py
+│   │   │   ├── embeddings.py
+│   │   │   ├── test_embeddings.py
+│   │   │   └── test_chunk_embeddings.py
 │   │   ├── services/
 │   │   └── main.py
 │   └── requirements.txt
@@ -278,17 +301,27 @@ Windows:
 pip install -r backend/requirements.txt
 ```
 
-### 4. Run the current ingestion test
+### 4. Run the current pipeline tests
+
+Document ingestion and chunking:
 
 ```bash
 python backend/app/rag/loader.py
 ```
 
-Expected output:
+Chunk embedding generation:
+
+```bash
+python backend/app/rag/test_chunk_embeddings.py
+```
+
+Expected embedding output:
 
 ```text
-Páginas cargadas: 10
-Chunks generados: 18
+Páginas: 10
+Chunks: 18
+Vectores generados: 18
+Dimensión de cada vector: 384
 ```
 
 ---
@@ -320,6 +353,13 @@ LangChain provides the abstractions required to integrate these components witho
 ### Why Qdrant?
 
 Qdrant provides vector indexing, similarity search, metadata filtering, persistent storage and production-oriented APIs.
+
+
+### Why a multilingual MiniLM embedding model?
+
+The MVP currently uses `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` because it provides multilingual semantic representations, works locally without requiring a paid API and is lightweight enough for development on modest hardware.
+
+The embedding dimensionality (**384**) is defined by the model architecture. The same model is used for both document chunks and future user queries so their vectors can be compared in the same semantic space.
 
 ---
 
