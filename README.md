@@ -139,7 +139,21 @@ Current validation result:
 
 ### 4. Vector storage
 
-Embeddings and metadata will be stored in **Qdrant**.
+Embeddings and metadata are stored locally in **Qdrant Local Mode**, allowing persistent vector storage without requiring Docker.
+
+Current implementation:
+
+```text
+18 chunks
+   ↓
+18 embeddings
+   ↓
+Qdrant Local
+   ↓
+18 persisted vector points
+```
+
+Each point stores the embedding together with the original text and metadata.
 
 Example metadata:
 
@@ -165,7 +179,23 @@ Vector Similarity Search
 Top-K Relevant Chunks
 ```
 
-The retriever selects the most relevant evidence from the knowledge base.
+The retriever selects the most relevant evidence from the knowledge base using cosine similarity.
+
+Current validation query:
+
+```text
+¿Cuántos días de vacaciones tiene un trabajador?
+```
+
+Top result:
+
+```text
+Score: 0.696
+Page: 5
+Section: 3. Vacaciones
+```
+
+The highest-ranked chunk correctly contains the vacation policy stating that employees are entitled to 30 calendar days of paid vacation after one continuous year of work.
 
 ### 6. Generation
 
@@ -196,7 +226,7 @@ The model will be instructed to answer only from retrieved evidence. If context 
 | Document parsing | PyPDFLoader | PDF ingestion |
 | Text splitting | RecursiveCharacterTextSplitter | Chunk generation |
 | Embeddings | Hugging Face · paraphrase-multilingual-MiniLM-L12-v2 | 384-dimensional semantic vector representation |
-| Vector database | Qdrant | Vector storage and similarity search |
+| Vector database | Qdrant Local | Persistent vector storage and cosine similarity search |
 | API | FastAPI | REST backend |
 | Relational database | PostgreSQL | Conversations and document metadata |
 | Demo interface | Streamlit | Lightweight project demo |
@@ -213,9 +243,9 @@ The model will be instructed to answer only from retrieved evidence. If context 
 | 1 | PDF Loader | ✅ Completed |
 | 2 | Chunking | ✅ Completed |
 | 3 | Embeddings | ✅ Completed |
-| 4 | Qdrant vector storage | ⏳ Next |
-| 5 | Semantic retrieval | ⏳ Planned |
-| 6 | RAG + LLM generation | ⏳ Planned |
+| 4 | Qdrant vector storage | ✅ Completed |
+| 5 | Semantic retrieval | ✅ Completed |
+| 6 | RAG + LLM generation | ⏳ Next |
 | 7 | FastAPI | ⏳ Planned |
 | 8 | PostgreSQL persistence | ⏳ Planned |
 | 9 | Streamlit demo | ⏳ Planned |
@@ -234,7 +264,26 @@ Hugging Face embedding model
       ↓
 18 vectors × 384 dimensions
       ↓
-Metadata preserved
+Qdrant Local
+      ↓
+18 persisted vector points
+      ↓
+Semantic retrieval validated
+```
+
+Validation query:
+
+```text
+¿Cuántos días de vacaciones tiene un trabajador?
+```
+
+Best match:
+
+```text
+Score: 0.696
+Source: manual_rrhh_empresa_demo.pdf
+Page: 5
+Section: 3. Vacaciones
 ```
 
 ---
@@ -252,13 +301,18 @@ enterprise-rag-assistant/
 │   │   │   ├── loader.py
 │   │   │   ├── splitter.py
 │   │   │   ├── embeddings.py
+│   │   │   ├── vector_store.py
+│   │   │   ├── retriever.py
 │   │   │   ├── test_embeddings.py
-│   │   │   └── test_chunk_embeddings.py
+│   │   │   ├── test_chunk_embeddings.py
+│   │   │   ├── test_qdrant.py
+│   │   │   └── test_retrieval.py
 │   │   ├── services/
 │   │   └── main.py
 │   └── requirements.txt
 │
 ├── data/
+│   ├── qdrant/
 │   └── sample_docs/
 │       └── manual_rrhh_empresa_demo.pdf
 │
@@ -324,6 +378,33 @@ Vectores generados: 18
 Dimensión de cada vector: 384
 ```
 
+Qdrant persistence:
+
+```bash
+python backend/app/rag/test_qdrant.py
+```
+
+Expected output:
+
+```text
+Chunks: 18
+Vectores generados: 18
+Puntos almacenados en Qdrant: 18
+```
+
+Semantic retrieval:
+
+```bash
+python backend/app/rag/test_retrieval.py
+```
+
+Expected top result:
+
+```text
+Página: 5
+Sección: 3. Vacaciones
+```
+
 ---
 
 ## Design Decisions
@@ -353,6 +434,8 @@ LangChain provides the abstractions required to integrate these components witho
 ### Why Qdrant?
 
 Qdrant provides vector indexing, similarity search, metadata filtering, persistent storage and production-oriented APIs.
+
+For the MVP, the project uses **Qdrant Local Mode** with persistent storage under `data/qdrant/`. This keeps the vector layer lightweight and reproducible without requiring Docker during local development.
 
 
 ### Why a multilingual MiniLM embedding model?
@@ -412,22 +495,23 @@ After the MVP is stable:
 ¿Cuántos días de vacaciones corresponden a un trabajador?
 ```
 
-Expected final flow:
+Current validated retrieval flow:
 
 ```text
 User Question
       ↓
-Embedding
+Query Embedding
       ↓
 Qdrant Search
       ↓
-Relevant HR Policy Chunk
+Top-K Relevant Chunks
       ↓
-LLM
-      ↓
-Grounded Answer
+Best Match: Vacation Policy
       ↓
 Source: manual_rrhh_empresa_demo.pdf — page 5
+
+Next phase:
+Retrieved Context + User Question → LLM → Grounded Answer + Source
 ```
 
 ---
