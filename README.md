@@ -66,7 +66,7 @@ flowchart LR
     UI[Streamlit Demo UI] --> API[FastAPI]
     API --> RAG[LangChain RAG Service]
     RAG --> VDB[(Qdrant)]
-    RAG --> LLM[OpenAI / Gemini]
+    RAG --> LLM[Gemini API]
     API --> PG[(PostgreSQL)]
 ```
 
@@ -199,7 +199,7 @@ The highest-ranked chunk correctly contains the vacation policy stating that emp
 
 ### 6. Generation
 
-Retrieved chunks are injected into the LLM prompt:
+The retrieved chunks are combined into a grounded prompt using **LangChain** and sent to **Gemini**, the primary LLM provider for the MVP.
 
 ```text
 SYSTEM INSTRUCTION
@@ -208,12 +208,30 @@ RETRIEVED CONTEXT
 +
 USER QUESTION
 ↓
-LLM
+LangChain Prompt
 ↓
-ANSWER + SOURCE
+Gemini API
+↓
+GROUNDED ANSWER + SOURCES
 ```
 
-The model will be instructed to answer only from retrieved evidence. If context is insufficient, it should explicitly indicate that no reliable answer was found.
+Current configuration:
+
+```text
+Provider: Gemini
+Model: gemini-2.5-flash
+Temperature: 0
+```
+
+`temperature=0` is used to favor consistent, evidence-focused responses.
+
+The system prompt instructs the model to answer only from retrieved context, avoid unsupported information and indicate when the context is insufficient.
+
+The end-to-end RAG flow has been validated with multiple questions, including vacation-policy and code-of-conduct queries.
+
+A **Mistral AI** provider is also implemented as an optional alternative, demonstrating that the generation layer is decoupled from a single LLM provider. **Gemini remains the active provider for the MVP**.
+
+> Note: source output currently reflects the retrieved Top-K chunks. Source deduplication and relevance filtering can be refined in later application layers.
 
 ---
 
@@ -222,11 +240,13 @@ The model will be instructed to answer only from retrieved evidence. If context 
 | Layer | Technology | Purpose |
 |---|---|---|
 | Language | Python | Core application and AI logic |
-| RAG framework | LangChain | RAG orchestration and integrations |
+| RAG framework | LangChain | RAG orchestration, prompt composition and LLM integration |
 | Document parsing | PyPDFLoader | PDF ingestion |
 | Text splitting | RecursiveCharacterTextSplitter | Chunk generation |
 | Embeddings | Hugging Face · paraphrase-multilingual-MiniLM-L12-v2 | 384-dimensional semantic vector representation |
 | Vector database | Qdrant Local | Persistent vector storage and cosine similarity search |
+| LLM provider | Gemini API · gemini-2.5-flash | Grounded answer generation from retrieved context |
+| Optional LLM provider | Mistral AI | Alternative LLM provider integrated through LangChain |
 | API | FastAPI | REST backend |
 | Relational database | PostgreSQL | Conversations and document metadata |
 | Demo interface | Streamlit | Lightweight project demo |
@@ -245,8 +265,8 @@ The model will be instructed to answer only from retrieved evidence. If context 
 | 3 | Embeddings | ✅ Completed |
 | 4 | Qdrant vector storage | ✅ Completed |
 | 5 | Semantic retrieval | ✅ Completed |
-| 6 | RAG + LLM generation | ⏳ Next |
-| 7 | FastAPI | ⏳ Planned |
+| 6 | RAG + LLM generation | ✅ Completed |
+| 7 | FastAPI | ⏳ Next |
 | 8 | PostgreSQL persistence | ⏳ Planned |
 | 9 | Streamlit demo | ⏳ Planned |
 | 10 | Docker | ⏳ Planned |
@@ -268,7 +288,13 @@ Qdrant Local
       ↓
 18 persisted vector points
       ↓
-Semantic retrieval validated
+Semantic retrieval
+      ↓
+LangChain prompt
+      ↓
+Gemini API
+      ↓
+Grounded answer + sources
 ```
 
 Validation query:
@@ -284,6 +310,24 @@ Score: 0.696
 Source: manual_rrhh_empresa_demo.pdf
 Page: 5
 Section: 3. Vacaciones
+```
+
+### End-to-end RAG validation
+
+```text
+Query 1:
+¿Cuántos días de vacaciones tiene un trabajador?
+
+Result:
+Gemini correctly generated the 30 / 33 / 35-day vacation policy
+from the retrieved page 5 context.
+
+Query 2:
+¿De forma breve cuáles son los códigos de conducta principales?
+
+Result:
+Gemini correctly summarized the main conduct principles
+from the retrieved page 8 context.
 ```
 
 ---
@@ -303,6 +347,8 @@ enterprise-rag-assistant/
 │   │   │   ├── embeddings.py
 │   │   │   ├── vector_store.py
 │   │   │   ├── retriever.py
+│   │   │   ├── chain.py
+│   │   │   ├── test_rag.py
 │   │   │   ├── test_embeddings.py
 │   │   │   ├── test_chunk_embeddings.py
 │   │   │   ├── test_qdrant.py
@@ -355,7 +401,18 @@ Windows:
 pip install -r backend/requirements.txt
 ```
 
-### 4. Run the current pipeline tests
+### 4. Configure environment variables
+
+Create a `.env` file in the project root:
+
+```env
+GOOGLE_API_KEY=your_gemini_api_key
+MISTRAL_API_KEY=your_mistral_api_key
+```
+
+The `.env` file is excluded from Git through `.gitignore`.
+
+### 5. Run the current pipeline tests
 
 Document ingestion and chunking:
 
@@ -405,6 +462,26 @@ Página: 5
 Sección: 3. Vacaciones
 ```
 
+RAG + Gemini generation:
+
+```bash
+python backend/app/rag/test_rag.py
+```
+
+Expected behavior:
+
+```text
+User Question
+      ↓
+Semantic Retrieval
+      ↓
+Retrieved Context
+      ↓
+Gemini
+      ↓
+Grounded Answer + Sources
+```
+
 ---
 
 ## Design Decisions
@@ -443,6 +520,15 @@ For the MVP, the project uses **Qdrant Local Mode** with persistent storage unde
 The MVP currently uses `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` because it provides multilingual semantic representations, works locally without requiring a paid API and is lightweight enough for development on modest hardware.
 
 The embedding dimensionality (**384**) is defined by the model architecture. The same model is used for both document chunks and future user queries so their vectors can be compared in the same semantic space.
+
+
+### Why Gemini as the primary LLM?
+
+Gemini is used as the primary generation provider because it integrates cleanly with LangChain and satisfies the MVP's generation requirements.
+
+The generation layer is intentionally decoupled from retrieval, allowing the LLM provider to be replaced without changing the embedding, Qdrant or retrieval pipeline.
+
+Mistral AI is also implemented as an alternative provider, demonstrating provider flexibility within the same RAG architecture.
 
 ---
 
@@ -495,7 +581,7 @@ After the MVP is stable:
 ¿Cuántos días de vacaciones corresponden a un trabajador?
 ```
 
-Current validated retrieval flow:
+Current validated end-to-end RAG flow:
 
 ```text
 User Question
@@ -506,12 +592,15 @@ Qdrant Search
       ↓
 Top-K Relevant Chunks
       ↓
-Best Match: Vacation Policy
+Retrieved Context
+      ↓
+LangChain Prompt
+      ↓
+Gemini API
+      ↓
+Grounded Answer
       ↓
 Source: manual_rrhh_empresa_demo.pdf — page 5
-
-Next phase:
-Retrieved Context + User Question → LLM → Grounded Answer + Source
 ```
 
 ---
