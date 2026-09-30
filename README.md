@@ -59,16 +59,18 @@ flowchart TD
     K --> L[(PostgreSQL)]
 ```
 
-### Planned application architecture
+### Application architecture
 
 ```mermaid
 flowchart LR
-    UI[Streamlit Demo UI] --> API[FastAPI]
+    UI[React + Vite + assistant-ui] --> API[FastAPI]
     API --> RAG[LangChain RAG Service]
-    RAG --> VDB[(Qdrant)]
+    RAG --> VDB[(Qdrant Local)]
     RAG --> LLM[Gemini API]
     API --> PG[(PostgreSQL)]
 ```
+
+The frontend is implemented as a separate React application and consumes the existing FastAPI REST API. Model execution remains server-side; no LLM API key is exposed to the browser.
 
 ---
 
@@ -248,8 +250,10 @@ A **Mistral AI** provider is also implemented as an optional alternative, demons
 | LLM provider | Gemini API · gemini-2.5-flash | Grounded answer generation from retrieved context |
 | Optional LLM provider | Mistral AI | Alternative LLM provider integrated through LangChain |
 | API | FastAPI | REST backend |
-| Relational database | PostgreSQL | Conversations and document metadata |
-| Demo interface | Streamlit | Lightweight project demo |
+| Relational database | PostgreSQL | Persistent conversations, messages and conversational memory |
+| Frontend | React + Vite + TypeScript | Web application shell and client-side UI |
+| AI chat UI | assistant-ui | Thread, message, composer and conversation UI primitives |
+| Styling | Tailwind CSS v4 + shadcn/ui | Responsive interface and reusable UI components |
 | Containers | Docker / Docker Compose | Reproducible local environment |
 | Version control | Git / GitHub | Source code and project history |
 
@@ -266,10 +270,10 @@ A **Mistral AI** provider is also implemented as an optional alternative, demons
 | 4 | Qdrant vector storage | ✅ Completed |
 | 5 | Semantic retrieval | ✅ Completed |
 | 6 | RAG + LLM generation | ✅ Completed |
-| 7 | FastAPI | ⏳ Next |
-| 8 | PostgreSQL persistence | ⏳ Planned |
-| 9 | Streamlit demo | ⏳ Planned |
-| 10 | Docker | ⏳ Planned |
+| 7 | FastAPI REST API | ✅ Completed |
+| 8 | PostgreSQL persistence + conversational memory | ✅ Completed |
+| 9 | React + assistant-ui frontend | ✅ Completed |
+| 10 | Final hardening / deployment | ⏳ Next |
 
 ### Current result
 
@@ -295,6 +299,12 @@ LangChain prompt
 Gemini API
       ↓
 Grounded answer + sources
+      ↓
+FastAPI REST API
+      ↓
+PostgreSQL conversational persistence
+      ↓
+React + assistant-ui frontend
 ```
 
 Validation query:
@@ -330,6 +340,33 @@ Gemini correctly summarized the main conduct principles
 from the retrieved page 8 context.
 ```
 
+
+### Application-layer validation
+
+The API and conversational layer are also validated end to end:
+
+```text
+POST /chat
+→ creates or reuses a conversation
+→ stores user and assistant messages
+→ retrieves recent conversation history
+→ executes RAG
+→ returns answer + sources + conversation_id
+
+GET /conversations
+→ lists persisted conversations
+
+GET /conversations/{conversation_id}/messages
+→ returns the full persisted history for a conversation
+
+GET /health
+→ reports API availability
+```
+
+PostgreSQL stores the complete chat history, while only the most recent **10 messages** are passed as conversational context to the RAG pipeline.
+
+The no-answer behavior was also validated: when the retrieved context does not contain the requested information, the assistant states that the information is unavailable and returns an empty source list.
+
 ---
 
 ## Project Structure
@@ -340,7 +377,13 @@ enterprise-rag-assistant/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
+│   │   │   ├── routes.py
+│   │   │   └── schemas.py
 │   │   ├── database/
+│   │   │   ├── connection.py
+│   │   │   ├── models.py
+│   │   │   ├── crud.py
+│   │   │   └── create_tables.py
 │   │   ├── rag/
 │   │   │   ├── loader.py
 │   │   │   ├── splitter.py
@@ -354,8 +397,22 @@ enterprise-rag-assistant/
 │   │   │   ├── test_qdrant.py
 │   │   │   └── test_retrieval.py
 │   │   ├── services/
+│   │   │   └── rag_service.py
 │   │   └── main.py
 │   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   │   ├── lib/
+│   │   │   └── api.ts
+│   │   ├── App.tsx
+│   │   └── MyRuntimeProvider.tsx
+│   ├── .env.example
+│   ├── .env.local
+│   ├── package.json
+│   ├── pnpm-lock.yaml
+│   ├── vite.config.ts
+│   └── tsconfig.json
 │
 ├── data/
 │   ├── qdrant/
@@ -363,12 +420,9 @@ enterprise-rag-assistant/
 │       └── manual_rrhh_empresa_demo.pdf
 │
 ├── tests/
-├── ui/
-│   └── streamlit_app.py
-│
-├── .env.example
+├── .env
 ├── .gitignore
-├── docker-compose.yml
+├── README.es.md
 └── README.md
 ```
 
@@ -383,10 +437,10 @@ git clone https://github.com/JohanMV/enterprise-rag-assistant.git
 cd enterprise-rag-assistant
 ```
 
-### 2. Create a virtual environment
+### 2. Backend virtual environment
 
 ```bash
-python -m venv .venv
+py -3.13 -m venv .venv
 ```
 
 Windows:
@@ -395,92 +449,110 @@ Windows:
 .venv\Scripts\activate
 ```
 
-### 3. Install dependencies
+Install backend dependencies:
 
 ```bash
 pip install -r backend/requirements.txt
 ```
 
-### 4. Configure environment variables
+### 3. Configure backend environment variables
 
 Create a `.env` file in the project root:
 
 ```env
 GOOGLE_API_KEY=your_gemini_api_key
 MISTRAL_API_KEY=your_mistral_api_key
+DATABASE_URL=postgresql+psycopg://postgres:your_password@localhost:5432/enterprise_rag
 ```
 
-The `.env` file is excluded from Git through `.gitignore`.
+The `.env` file is excluded from Git.
 
-### 5. Run the current pipeline tests
+### 4. PostgreSQL
 
-Document ingestion and chunking:
-
-```bash
-python backend/app/rag/loader.py
-```
-
-Chunk embedding generation:
-
-```bash
-python backend/app/rag/test_chunk_embeddings.py
-```
-
-Expected embedding output:
+Create a local PostgreSQL database:
 
 ```text
-Páginas: 10
-Chunks: 18
-Vectores generados: 18
-Dimensión de cada vector: 384
+enterprise_rag
 ```
 
-Qdrant persistence:
+Then create the application tables:
 
 ```bash
-python backend/app/rag/test_qdrant.py
+python -m backend.app.database.create_tables
 ```
 
-Expected output:
+Expected tables:
 
 ```text
-Chunks: 18
-Vectores generados: 18
-Puntos almacenados en Qdrant: 18
+conversations
+messages
 ```
 
-Semantic retrieval:
+### 5. Run the FastAPI backend
 
 ```bash
-python backend/app/rag/test_retrieval.py
+python -m uvicorn backend.app.main:app --reload
 ```
 
-Expected top result:
+API documentation:
 
 ```text
-Página: 5
-Sección: 3. Vacaciones
+http://127.0.0.1:8000/docs
 ```
 
-RAG + Gemini generation:
+Available endpoints:
+
+```text
+GET  /health
+POST /chat
+GET  /conversations
+GET  /conversations/{conversation_id}/messages
+```
+
+### 6. Configure and run the frontend
+
+The frontend uses a separate public configuration variable:
+
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+No Gemini or database secrets are exposed to the browser.
+
+From the `frontend/` directory:
 
 ```bash
-python backend/app/rag/test_rag.py
+pnpm install
+pnpm dev
 ```
 
-Expected behavior:
+Development URL:
 
 ```text
-User Question
-      ↓
-Semantic Retrieval
-      ↓
-Retrieved Context
-      ↓
-Gemini
-      ↓
-Grounded Answer + Sources
+http://127.0.0.1:5173
 ```
+
+During local development, Vite proxies frontend API calls to FastAPI.
+
+### 7. Validated application flow
+
+```text
+React + assistant-ui
+        ↓
+FastAPI
+        ↓
+Conversation history from PostgreSQL
+        ↓
+Semantic retrieval from Qdrant
+        ↓
+Gemini generation
+        ↓
+Answer + source references
+        ↓
+Persist user/assistant messages
+```
+
+The backend stores the complete conversation history in PostgreSQL while limiting LLM conversational context to the most recent 10 messages.
 
 ---
 
@@ -530,6 +602,19 @@ The generation layer is intentionally decoupled from retrieval, allowing the LLM
 
 Mistral AI is also implemented as an alternative provider, demonstrating provider flexibility within the same RAG architecture.
 
+
+### Why assistant-ui?
+
+The project uses **assistant-ui** on top of React because it provides production-oriented AI chat primitives such as threads, messages, composer state and conversation interactions without replacing the existing backend architecture.
+
+The frontend consumes the existing FastAPI REST contract instead of creating a new model route or exposing an LLM provider directly in the browser.
+
+### Why PostgreSQL for conversational memory?
+
+PostgreSQL persists conversations and messages independently from the LLM. This allows conversation history to survive backend restarts and enables dedicated history endpoints.
+
+The complete history is stored, while only the latest 10 messages are injected into the conversational RAG context to control prompt size and latency.
+
 ---
 
 ## Evaluation Strategy
@@ -555,17 +640,22 @@ Is response time acceptable for an interactive application?
 
 ## Planned Improvements
 
-After the MVP is stable:
+The core MVP is now functional end to end. Remaining work is primarily hardening, UX refinement and deployment:
 
+- frontend visual polish and responsive refinement
+- conversation titles instead of numeric labels
+- improved source presentation and source relevance filtering
+- API integration tests
+- automated RAG evaluation
 - Hybrid Search
 - metadata filtering
 - reranking
-- configurable embedding providers
 - LangSmith / Langfuse observability
-- automated RAG evaluation
 - support for DOCX and TXT
 - authentication
 - document-level access control
+- production deployment
+- Docker / Docker Compose packaging
 - LangGraph-based Agentic RAG
 - human-in-the-loop workflows
 
@@ -581,10 +671,14 @@ After the MVP is stable:
 ¿Cuántos días de vacaciones corresponden a un trabajador?
 ```
 
-Current validated end-to-end RAG flow:
+Current validated end-to-end application flow:
 
 ```text
-User Question
+User Question in assistant-ui
+      ↓
+POST /chat
+      ↓
+Conversation history from PostgreSQL
       ↓
 Query Embedding
       ↓
@@ -592,15 +686,15 @@ Qdrant Search
       ↓
 Top-K Relevant Chunks
       ↓
-Retrieved Context
-      ↓
 LangChain Prompt
       ↓
 Gemini API
       ↓
-Grounded Answer
+Grounded Answer + Sources
       ↓
-Source: manual_rrhh_empresa_demo.pdf — page 5
+Persist conversation messages in PostgreSQL
+      ↓
+Render response in React UI
 ```
 
 ---
@@ -620,7 +714,10 @@ The objective is to demonstrate practical knowledge of:
 - prompt grounding
 - LLM integration
 - REST APIs
-- persistence
+- PostgreSQL persistence
+- conversational memory
+- React-based AI interfaces
+- assistant-ui integration
 - containerization
 - evaluation of AI systems
 
