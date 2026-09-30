@@ -1,5 +1,4 @@
-from vector_store import COLLECTION_NAME
-
+from backend.app.rag.vector_store import COLLECTION_NAME
 
 def retrieve_chunks(client, embedding_model, query, top_k=3):
     query_vector = embedding_model.embed_query(query)
