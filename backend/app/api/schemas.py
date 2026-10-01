@@ -18,6 +18,9 @@ class ChatRequest(BaseModel):
 class Source(BaseModel):
     document: str
     page: int
+    excerpt: str
+    document_id: Optional[str] = None
+    score: Optional[float] = None
 
 
 class ChatResponse(BaseModel):
@@ -28,7 +31,12 @@ class ChatResponse(BaseModel):
 
 class ConversationResponse(BaseModel):
     id: int
+    title: Optional[str] = None
     created_at: datetime
+
+
+class ConversationUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
 
 
 class MessageResponse(BaseModel):
@@ -36,4 +44,16 @@ class MessageResponse(BaseModel):
     conversation_id: int
     role: str
     content: str
+    sources: Optional[List[Source]] = None
+    created_at: datetime
+
+
+class DocumentResponse(BaseModel):
+    id: str
+    filename: str
+    original_filename: str
+    file_type: str
+    status: str
+    chunk_count: int
+    error_message: Optional[str] = None
     created_at: datetime

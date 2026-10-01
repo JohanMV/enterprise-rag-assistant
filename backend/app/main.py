@@ -1,5 +1,10 @@
 from fastapi import FastAPI
 
+from backend.app.database.migrations import initialize_database
+
+
+initialize_database()
+
 from backend.app.api.routes import router
 
 

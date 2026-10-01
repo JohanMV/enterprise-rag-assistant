@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
@@ -20,19 +22,36 @@ def create_collection(client, vector_size=384):
         )
 
 
-def store_chunks(client, chunks, vectors):
+def store_chunks(
+    client,
+    chunks,
+    vectors,
+    document_id: str | None = None,
+    filename: str | None = None,
+):
     points = []
 
-    for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
+    for chunk, vector in zip(chunks, vectors):
+        point_id = str(uuid4())
+        source = chunk.metadata.get("source")
+        page = chunk.metadata.get("page")
+        page_label = chunk.metadata.get("page_label")
+
+        if not page_label and page is not None:
+            page_label = str(int(page) + 1)
+
         points.append(
             PointStruct(
-                id=i,
+                id=point_id,
                 vector=vector,
                 payload={
                     "text": chunk.page_content,
-                    "source": chunk.metadata.get("source"),
-                    "page": chunk.metadata.get("page"),
-                    "page_label": chunk.metadata.get("page_label")
+                    "source": source,
+                    "document_id": document_id,
+                    "filename": filename,
+                    "page": page,
+                    "page_label": page_label,
+                    "chunk_id": point_id,
                 }
             )
         )

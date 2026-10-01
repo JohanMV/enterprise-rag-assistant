@@ -15,7 +15,9 @@ import {
 } from "react";
 import {
   api,
+  ApiError,
   type ConversationResponse,
+  type DocumentResponse,
   type MessageResponse,
   type Source,
 } from "@/lib/api";
@@ -24,28 +26,41 @@ import {
   type BackendStatus,
 } from "@/enterprise-runtime-context";
 
-const formatSources = (sources: Source[]) => {
-  if (sources.length === 0) return "";
+const toSourcePart = (source: Source, index: number) => ({
+  type: "source" as const,
+  sourceType: "document" as const,
+  id: source.document_id ?? `${source.document}-${source.page}-${index}`,
+  title: source.document,
+  filename: source.document,
+  mediaType: "application/pdf",
+  providerMetadata: {
+    rag: {
+      documentId: source.document_id,
+      page: source.page,
+      excerpt: source.excerpt,
+      score: source.score,
+    },
+  },
+});
 
-  const items = sources.map(
-    ({ document, page }, index) =>
-      `${index + 1}. **${document}** — página ${page}`,
-  );
-
-  return `\n\n---\n**Fuentes**\n\n${items.join("\n")}`;
-};
-
-const toThreadMessage = (message: MessageResponse): ThreadMessageLike => ({
-  id: String(message.id),
-  role:
+const toThreadMessage = (message: MessageResponse): ThreadMessageLike => {
+  const role =
     message.role === "user"
       ? "user"
       : message.role === "system"
         ? "system"
-        : "assistant",
-  content: [{ type: "text", text: message.content }],
-  createdAt: new Date(message.created_at),
-});
+        : "assistant";
+
+  return {
+    id: String(message.id),
+    role,
+    content: [
+      { type: "text", text: message.content },
+      ...(role === "assistant" ? (message.sources ?? []).map(toSourcePart) : []),
+    ],
+    createdAt: new Date(message.created_at),
+  };
+};
 
 const getText = (message: AppendMessage) =>
   message.content
@@ -54,12 +69,36 @@ const getText = (message: AppendMessage) =>
     .join("\n")
     .trim();
 
+const STARTER_SUGGESTIONS = [
+  {
+    title: "Política de vacaciones",
+    description: "Días disponibles y solicitud",
+    prompt: "¿Cuántos días de vacaciones tiene un trabajador?",
+  },
+  {
+    title: "Seguridad de contraseñas",
+    description: "Requisitos y buenas prácticas",
+    prompt: "¿Cuál es la política para crear contraseñas seguras?",
+  },
+  {
+    title: "Respuesta ante incidentes",
+    description: "Pasos y canales de reporte",
+    prompt: "¿Qué debo hacer ante un incidente de ciberseguridad?",
+  },
+  {
+    title: "Malware y ransomware",
+    description: "Definiciones y prevención",
+    prompt: "¿Qué es el malware y cómo puedo prevenirlo?",
+  },
+];
+
 export function MyRuntimeProvider({ children }: { children: ReactNode }) {
   const [backendStatus, setBackendStatus] =
     useState<BackendStatus>("checking");
   const [conversations, setConversations] = useState<ConversationResponse[]>(
     [],
   );
+  const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<
     string | undefined
   >();
@@ -67,7 +106,10 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [documentError, setDocumentError] = useState<string | null>(null);
   const requestController = useRef<AbortController | null>(null);
   const conversationId = useRef<number | null>(null);
 
@@ -84,6 +126,64 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
       setIsLoadingConversations(false);
     }
   }, []);
+
+  const refreshDocuments = useCallback(async () => {
+    try {
+      setDocuments(await api.documents());
+      setDocumentError(null);
+    } catch (requestError) {
+      setDocumentError(
+        requestError instanceof Error
+          ? requestError.message
+          : "No se pudieron cargar los documentos.",
+      );
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  }, []);
+
+  const renameConversation = useCallback(async (id: number, title: string) => {
+    setError(null);
+    try {
+      const updated = await api.renameConversation(id, title);
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === id ? updated : conversation,
+        ),
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "No se pudo renombrar la conversación.",
+      );
+      throw requestError;
+    }
+  }, []);
+
+  const uploadDocument = useCallback(
+    async (file: File) => {
+      setIsUploadingDocument(true);
+      setDocumentError(null);
+      try {
+        await api.uploadDocument(file);
+        await refreshDocuments();
+      } catch (requestError) {
+        const message =
+          requestError instanceof ApiError && requestError.status === 409
+            ? "Este documento ya fue indexado."
+            : requestError instanceof Error
+            ? requestError.message
+            : "No se pudo subir el documento.";
+        await refreshDocuments();
+        setDocumentError(message);
+        throw requestError;
+      } finally {
+        setIsUploadingDocument(false);
+      }
+    },
+    [refreshDocuments],
+  );
 
   const loadConversation = useCallback(async (id: string) => {
     requestController.current?.abort();
@@ -128,6 +228,38 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, []);
 
+  const deleteConversation = useCallback(
+    async (id: number) => {
+      setError(null);
+      try {
+        await api.deleteConversation(id);
+        setConversations((current) =>
+          current.filter((conversation) => conversation.id !== id),
+        );
+
+        if (activeConversationId === String(id)) {
+          requestController.current?.abort();
+          requestController.current = null;
+          conversationId.current = null;
+          setActiveConversationId(undefined);
+          setMessages([]);
+          setIsLoading(false);
+          setIsRunning(false);
+        }
+
+        await refreshConversations();
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "No se pudo eliminar la conversación.",
+        );
+        throw requestError;
+      }
+    },
+    [activeConversationId, refreshConversations],
+  );
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -148,6 +280,19 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
         );
       },
     ).finally(() => setIsLoadingConversations(false));
+    api.documents(controller.signal).then(
+      setDocuments,
+      (requestError) => {
+        if (requestError instanceof DOMException && requestError.name === "AbortError") {
+          return;
+        }
+        setDocumentError(
+          requestError instanceof Error
+            ? requestError.message
+            : "No se pudieron cargar los documentos.",
+        );
+      },
+    ).finally(() => setIsLoadingDocuments(false));
 
     return () => controller.abort();
   }, [refreshConversations]);
@@ -187,8 +332,9 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
             content: [
               {
                 type: "text",
-                text: `${response.answer}${formatSources(response.sources)}`,
+                text: response.answer,
               },
+              ...response.sources.map(toSourcePart),
             ],
             createdAt: new Date(),
           },
@@ -224,7 +370,7 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
         status: "regular" as const,
         id: String(conversation.id),
         remoteId: String(conversation.id),
-        title: `Conversación ${conversation.id}`,
+        title: conversation.title ?? `Conversación ${conversation.id}`,
         custom: { createdAt: conversation.created_at },
       })),
       archivedThreads: [],
@@ -242,6 +388,7 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
 
   const runtime = useExternalStoreRuntime({
     messages,
+    suggestions: STARTER_SUGGESTIONS,
     convertMessage: (message) => message,
     isLoading,
     isRunning,
@@ -257,22 +404,38 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
     () => ({
       backendStatus,
       conversations,
+      documents,
       activeConversationId,
       isLoadingConversations,
+      isLoadingDocuments,
+      isUploadingDocument,
       error,
+      documentError,
       refreshConversations,
+      refreshDocuments,
       loadConversation,
       startNewConversation,
+      renameConversation,
+      deleteConversation,
+      uploadDocument,
     }),
     [
       activeConversationId,
       backendStatus,
       conversations,
+      documents,
+      documentError,
       error,
       isLoadingConversations,
+      isLoadingDocuments,
+      isUploadingDocument,
       loadConversation,
+      deleteConversation,
+      refreshDocuments,
       refreshConversations,
+      renameConversation,
       startNewConversation,
+      uploadDocument,
     ],
   );
 
