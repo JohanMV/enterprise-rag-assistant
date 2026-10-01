@@ -6,14 +6,20 @@ from fastapi import UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.app.database.models import Document
 from backend.app.database.crud import (
     create_document,
+    delete_document_record,
     get_document_by_hash,
     update_document_status,
 )
 from backend.app.rag.loader import load_pdf
 from backend.app.rag.splitter import split_documents
-from backend.app.rag.vector_store import create_collection, store_chunks
+from backend.app.rag.vector_store import (
+    create_collection,
+    delete_document_points,
+    store_chunks,
+)
 from backend.app.services.rag_service import embedding_model, qdrant_client
 
 
@@ -25,6 +31,45 @@ class DocumentIngestionError(Exception):
     def __init__(self, message: str, status_code: int = 422):
         super().__init__(message)
         self.status_code = status_code
+
+
+class DocumentDeletionError(Exception):
+    pass
+
+
+def delete_document(db: Session, document: Document):
+    """Remove a document without leaving retrievable vectors behind.
+
+    Qdrant is cleared first. If a later filesystem or database operation fails,
+    the PostgreSQL row remains available so the deletion can be retried safely.
+    """
+    documents_root = DOCUMENTS_DIR.resolve()
+    document_path = (documents_root / document.filename).resolve()
+
+    if document_path.parent != documents_root:
+        raise DocumentDeletionError("La ruta almacenada del documento no es válida.")
+
+    try:
+        delete_document_points(qdrant_client, document.id)
+    except Exception as exc:
+        raise DocumentDeletionError(
+            "No se pudieron eliminar los vectores del documento."
+        ) from exc
+
+    try:
+        document_path.unlink(missing_ok=True)
+    except OSError as exc:
+        raise DocumentDeletionError(
+            "No se pudo eliminar el archivo del documento."
+        ) from exc
+
+    try:
+        delete_document_record(db, document)
+    except Exception as exc:
+        db.rollback()
+        raise DocumentDeletionError(
+            "No se pudo eliminar el registro del documento."
+        ) from exc
 
 
 def ingest_pdf(db: Session, upload: UploadFile):

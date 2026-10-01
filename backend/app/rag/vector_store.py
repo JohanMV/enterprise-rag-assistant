@@ -1,7 +1,14 @@
 from uuid import uuid4
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
 
 
 COLLECTION_NAME = "enterprise_documents"
@@ -19,6 +26,37 @@ def create_collection(client, vector_size=384):
                 size=vector_size,
                 distance=Distance.COSINE
             )
+        )
+
+
+def delete_document_points(client, document_id: str):
+    """Delete and verify only the vectors that belong to one document."""
+    if not client.collection_exists(COLLECTION_NAME):
+        return
+
+    document_filter = Filter(
+        must=[
+            FieldCondition(
+                key="document_id",
+                match=MatchValue(value=document_id),
+            )
+        ]
+    )
+
+    client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=document_filter,
+        wait=True,
+    )
+
+    remaining = client.count(
+        collection_name=COLLECTION_NAME,
+        count_filter=document_filter,
+        exact=True,
+    ).count
+    if remaining:
+        raise RuntimeError(
+            f"Qdrant still contains {remaining} point(s) for document {document_id}."
         )
 
 

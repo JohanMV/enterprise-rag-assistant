@@ -121,6 +121,11 @@ def get_document_by_hash(db: Session, file_hash: str):
     return db.query(Document).filter(Document.file_hash == file_hash).first()
 
 
+def delete_document_record(db: Session, document: Document):
+    db.delete(document)
+    db.commit()
+
+
 def update_document_status(
     db: Session,
     document: Document,

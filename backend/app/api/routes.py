@@ -25,7 +25,9 @@ from backend.app.database.crud import (
     update_conversation_title,
 )
 from backend.app.services.document_service import (
+    DocumentDeletionError,
     DocumentIngestionError,
+    delete_document,
     ingest_pdf,
 )
 from backend.app.services.rag_service import ask_rag
@@ -208,6 +210,23 @@ def document_detail(document_id: str, db: Session = Depends(get_db)):
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
     return document
+
+
+@router.delete(
+    "/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_document(document_id: str, db: Session = Depends(get_db)):
+    document = get_document(db, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    try:
+        delete_document(db, document)
+    except DocumentDeletionError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/documents", response_model=DocumentResponse, status_code=201)

@@ -185,6 +185,23 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
     [refreshDocuments],
   );
 
+  const deleteDocument = useCallback(async (id: string) => {
+    setDocumentError(null);
+    try {
+      await api.deleteDocument(id);
+      setDocuments((current) =>
+        current.filter((document) => document.id !== id),
+      );
+    } catch (requestError) {
+      const message =
+        requestError instanceof Error
+          ? requestError.message
+          : "No se pudo eliminar el documento. Inténtalo nuevamente.";
+      setDocumentError(message);
+      throw requestError;
+    }
+  }, []);
+
   const loadConversation = useCallback(async (id: string) => {
     requestController.current?.abort();
     const controller = new AbortController();
@@ -418,6 +435,7 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
       renameConversation,
       deleteConversation,
       uploadDocument,
+      deleteDocument,
     }),
     [
       activeConversationId,
@@ -431,6 +449,7 @@ export function MyRuntimeProvider({ children }: { children: ReactNode }) {
       isUploadingDocument,
       loadConversation,
       deleteConversation,
+      deleteDocument,
       refreshDocuments,
       refreshConversations,
       renameConversation,

@@ -111,7 +111,12 @@ export const api = {
     request<DocumentResponse[]>("/documents", { signal }),
 
   document: (documentId: string, signal?: AbortSignal) =>
-    request<DocumentResponse>(`/documents/${documentId}`, { signal }),
+    request<DocumentResponse>(`/documents/${encodeURIComponent(documentId)}`, { signal }),
+
+  deleteDocument: (documentId: string) =>
+    request<void>(`/documents/${encodeURIComponent(documentId)}`, {
+      method: "DELETE",
+    }),
 
   uploadDocument: (file: File) => {
     const formData = new FormData();

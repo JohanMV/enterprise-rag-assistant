@@ -20,6 +20,7 @@ export type EnterpriseRuntimeState = {
   renameConversation: (id: number, title: string) => Promise<void>;
   deleteConversation: (id: number) => Promise<void>;
   uploadDocument: (file: File) => Promise<void>;
+  deleteDocument: (id: string) => Promise<void>;
 };
 
 export const EnterpriseRuntimeContext =
