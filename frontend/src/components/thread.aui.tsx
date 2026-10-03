@@ -583,7 +583,11 @@ const AssistantMessage: FC = () => {
                 );
               }
               case "text":
-                return <MarkdownText />;
+                return (
+                  <div className="assistant-answer-reveal motion-reduce:animate-none">
+                    <MarkdownText />
+                  </div>
+                );
               case "source":
                 return <SourceCitation {...part} />;
               case "reasoning":
@@ -606,13 +610,20 @@ const AssistantMessage: FC = () => {
                 );
               case "indicator":
                 return (
-                  <span
+                  <div
                     data-slot="aui_assistant-message-indicator"
-                    className="animate-pulse font-sans"
-                    aria-label="El asistente está procesando"
+                    className="mt-1 max-w-lg py-1"
+                    role="status"
+                    aria-live="polite"
                   >
-                    {"●"}
-                  </span>
+                    <p className="mb-2 text-xs font-medium text-neutral-500">
+                      Consultando tus documentos…
+                    </p>
+                    <div className="flex flex-col gap-2" aria-hidden>
+                      <Skeleton className="h-2.5 w-[min(24rem,82%)] bg-neutral-200 motion-reduce:animate-none" />
+                      <Skeleton className="h-2.5 w-[min(17rem,62%)] bg-neutral-200 motion-reduce:animate-none" />
+                    </div>
+                  </div>
                 );
               default:
                 return null;
