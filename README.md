@@ -10,21 +10,17 @@
 ![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20DB-DC244C?style=flat-square)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Persistencia-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 
-> **Aplicación empresarial de Generación Aumentada por Recuperación (RAG) para consultar documentos internos de negocio mediante respuestas fundamentadas, memoria conversacional, trazabilidad de fuentes y gestión del ciclo de vida de documentos.**
-
+> **Aplicación empresarial de Generación Aumentada por Recuperación (RAG) para consultar documentación interna mediante respuestas fundamentadas, memoria conversacional, trazabilidad de fuentes y gestión del ciclo de vida de documentos.**
 
 [🇬🇧 English version](README.md)
-
 
 ## Tabla de contenidos
 
 - [Resumen](#resumen)
-- [Por qué importa para una empresa](#por-qué-importa-para-una-empresa)
 - [Características principales](#características-principales)
-- [Pipeline de IA](#pipeline-de-ia)
 - [Arquitectura](#arquitectura)
+- [Pipeline de IA](#pipeline-de-ia)
 - [Stack tecnológico](#stack-tecnológico)
-- [Decisiones de diseño clave](#decisiones-de-diseño-clave)
 - [Gestión de la base de conocimientos](#gestión-de-la-base-de-conocimientos)
 - [API principal](#api-principal)
 - [Instalación rápida](#instalación-rápida)
@@ -38,331 +34,84 @@
 
 Las empresas acumulan conocimiento crítico en manuales de RR.HH., políticas de seguridad, procedimientos operativos, informes técnicos y documentación interna. Encontrar una respuesta concreta dentro de esa información suele ser lento, repetitivo y difícil de auditar.
 
-**Enterprise RAG Assistant** implementa un **pipeline de IA de extremo a extremo** que transforma esa documentación en una base de conocimientos consultable mediante lenguaje natural:
+**Enterprise RAG Assistant** implementa un pipeline de IA de extremo a extremo que transforma documentos empresariales en una base de conocimientos consultable mediante lenguaje natural. El sistema recupera evidencia desde los documentos indexados, genera respuestas utilizando ese contexto y puede mostrar el documento, la página y un extracto de respaldo.
 
-```text
-Ingesta
-→ Chunking
-→ Embeddings
-→ Recuperación semántica
-→ Generación fundamentada
-→ Respuesta + fuentes
-```
+Esto resulta útil en áreas como **RR.HH., soporte interno, ciberseguridad, operaciones y cumplimiento**, donde es importante acceder rápidamente a información confiable sin reentrenar el modelo cada vez que cambia la documentación.
 
-El sistema recupera evidencia desde los documentos indexados y genera la respuesta a partir de ese contexto, mostrando además el documento fuente, la página y un extracto de respaldo cuando corresponde.
-
-Ejemplos de preguntas:
+Ejemplos de consultas:
 
 - “¿Cuántos días de vacaciones corresponden a los empleados?”
 - “¿Qué debo hacer si detecto un incidente de seguridad?”
 - “¿Cuál es el procedimiento definido para solicitar acceso?”
-- “¿Qué indica el documento sobre este proceso?”
-
----
-
-## Por qué importa para una empresa
-
-Un sistema RAG empresarial ayuda a resolver problemas frecuentes de gestión del conocimiento:
-
-- **Información dispersa:** documentos distribuidos entre manuales, carpetas y procedimientos.
-- **Tiempo perdido:** usuarios que buscan manualmente respuestas que ya existen en documentación interna.
-- **Respuestas inconsistentes:** diferentes personas pueden interpretar o consultar versiones distintas de una misma política.
-- **Baja trazabilidad:** sin fuente y página es difícil auditar de dónde salió una respuesta.
-- **Riesgo de alucinaciones:** un LLM general puede responder con información plausible pero no respaldada por la documentación de la empresa.
-- **Actualización costosa:** el conocimiento cambia constantemente y no debería requerir reentrenar un modelo.
-
-Esta arquitectura permite:
-
-- consultar conocimiento interno en lenguaje natural;
-- responder utilizando evidencia documental;
-- mantener trazabilidad hacia la fuente;
-- añadir o eliminar conocimiento sin fine-tuning;
-- desacoplar la base documental del modelo generativo;
-- controlar mejor qué información forma parte del contexto disponible para el asistente.
-
-Es aplicable a escenarios como RR.HH., soporte interno, ciberseguridad, operaciones, cumplimiento, documentación técnica y gestión del conocimiento.
 
 ---
 
 ## Características principales
 
-### Pipeline de IA y RAG
-
-- ingesta de documentos PDF;
-- chunking con solapamiento;
-- embeddings multilingües generados localmente;
-- almacenamiento vectorial persistente;
-- búsqueda semántica Top-K;
+### IA y RAG
+- ingesta e indexación de documentos PDF;
+- chunking con solapamiento y embeddings multilingües locales;
+- búsqueda semántica Top-K en Qdrant;
 - reescritura conversacional de consultas;
 - generación fundamentada con Gemini;
 - comportamiento controlado cuando no existe evidencia suficiente.
 
-### Trazabilidad de fuentes
-
-Las respuestas pueden incluir:
-
-- documento fuente;
-- página;
-- extracto;
-- puntuación de relevancia.
-
-Las fuentes se persisten junto con el historial de conversación.
-
-### Gestión documental
-
-- carga e indexación automática;
-- metadata persistente;
+### Trazabilidad y gestión documental
+- fuentes con documento, página, extracto y puntuación de relevancia;
+- persistencia de fuentes junto con el historial de conversación;
 - prevención de duplicados mediante SHA-256;
-- eliminación consistente en PostgreSQL, Qdrant y almacenamiento físico;
+- eliminación coordinada en PostgreSQL, Qdrant y almacenamiento físico;
 - base de conocimientos administrable desde la interfaz.
 
 ### Conversaciones
-
-- historial persistente;
-- títulos automáticos;
-- renombrado;
-- eliminación;
-- búsqueda local de conversaciones;
+- historial persistente y títulos automáticos;
+- renombrado, eliminación y búsqueda local;
 - memoria conversacional basada en contexto reciente.
-
-### Interfaz
-
-La aplicación utiliza una interfaz empresarial de tres columnas:
-
-```text
-┌─────────────────┬───────────────────────────┬──────────────────────┐
-│ Historial       │ Chat principal            │ Base de conocimientos│
-│                 │                           │                      │
-│ Nuevo chat      │ Mensajes                  │ Documentos           │
-│ Buscar chats    │ Fuentes                   │ Acciones             │
-│ Conversaciones  │ Composer                  │ Carga / gestión      │
-└─────────────────┴───────────────────────────┴──────────────────────┘
-```
-![Enterprise RAG Assistant](./docs/images/demo.png)
-
----
-
-## Pipeline de IA
-
-El núcleo técnico del proyecto es un **pipeline de IA end-to-end** para procesamiento documental, recuperación semántica y generación con LLM.
-
-```mermaid
-flowchart LR
-    A[PDF] --> B[Parsing]
-    B --> C[Chunking]
-    C --> D[Embeddings 384D]
-    D --> E[(Qdrant)]
-    E --> F[Query Rewriting]
-    F --> G[Semantic Retrieval]
-    G --> H[Prompt Grounding]
-    H --> I[Gemini]
-    I --> J[Respuesta + Fuentes]
-    J --> K[(PostgreSQL)]
-```
-
-Este flujo cubre competencias habituales en roles de **AI Engineer, Generative AI Engineer y LLM Engineer**:
-
-- ingestión y preprocesamiento documental;
-- segmentación de texto;
-- generación de embeddings;
-- vector search;
-- query rewriting;
-- retrieval orchestration;
-- prompt grounding;
-- integración con LLM;
-- persistencia;
-- trazabilidad;
-- evaluación de comportamiento RAG.
-
-<details>
-<summary><strong>Ver detalle técnico del pipeline</strong></summary>
-
-### 1. Ingesta
-
-Los documentos se cargan con `PyPDFLoader`, preservando metadata como documento, página, `document_id` y `chunk_id`.
-
-Formato soportado actualmente:
-
-```text
-PDF
-```
-
-### 2. Chunking
-
-```text
-RecursiveCharacterTextSplitter
-chunk_size    = 800
-chunk_overlap = 150
-```
-
-El solapamiento ayuda a conservar contexto cuando una sección relevante cruza los límites entre fragmentos.
-
-### 3. Embeddings
-
-Modelo:
-
-```text
-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-```
-
-Dimensionalidad:
-
-```text
-384
-```
-
-El mismo modelo se utiliza para documentos y consultas para mantener ambas representaciones en el mismo espacio vectorial.
-
-### 4. Almacenamiento vectorial
-
-Qdrant se utiliza para almacenar vectores y metadata asociada.
-
-Colección:
-
-```text
-enterprise_documents
-```
-
-Métrica:
-
-```text
-COSINE
-```
-
-Persistencia local:
-
-```text
-data/qdrant/
-```
-
-### 5. Reescritura conversacional
-
-El historial no se concatena directamente a la consulta de retrieval.
-
-En su lugar:
-
-```text
-Historial reciente + pregunta actual
-↓
-Consulta independiente
-↓
-Retrieval
-```
-
-Esto reduce contaminación semántica cuando la conversación cambia de tema.
-
-### 6. Recuperación
-
-La consulta reescrita se convierte en embedding y se compara con los fragmentos de Qdrant mediante similitud coseno.
-
-### 7. Generación fundamentada
-
-Proveedor activo:
-
-```text
-Gemini
-gemini-2.5-flash
-temperature = 0
-```
-
-El prompt instruye al modelo a responder únicamente usando el contexto recuperado y a indicar cuando la información es insuficiente.
-
-Existe además una abstracción para Mistral como proveedor alternativo.
-
-### 8. Persistencia
-
-PostgreSQL almacena:
-
-- conversaciones;
-- mensajes;
-- fuentes;
-- metadata documental.
-
-El historial completo se conserva, mientras que los **10 mensajes más recientes** se utilizan como contexto conversacional para controlar tamaño del prompt, latencia y consumo de tokens.
-
-</details>
 
 ---
 
 ## Arquitectura
 
-```mermaid
-flowchart LR
-    UI[React + Vite + assistant-ui] --> API[FastAPI]
-    API --> PG[(PostgreSQL)]
-    API --> FS[(Almacenamiento de documentos)]
-    API --> RAG[Servicio RAG con LangChain]
-    RAG --> REWRITE[Query Rewriting]
-    REWRITE --> EMB[MiniLM Embeddings]
-    EMB --> QD[(Qdrant)]
-    QD --> RET[Top-K Chunks]
-    RET --> LLM[Gemini 2.5 Flash]
-    LLM --> API
-    API --> UI
-```
+![Enterprise RAG Assistant - Architecture](./docs/images/enterprise_rag_assistant_architecture.png)
 
-### Responsabilidades por capa
+La arquitectura separa el **estado estructurado** de la aplicación en PostgreSQL, la **recuperación vectorial** en Qdrant y la **generación de lenguaje** en el proveedor LLM. FastAPI actúa como capa de orquestación entre la interfaz, la persistencia y el pipeline RAG.
 
-| Capa | Responsabilidad |
-|---|---|
-| React + assistant-ui | Interfaz, chat, historial y gestión documental |
-| FastAPI | API REST y orquestación |
-| LangChain | Pipeline RAG e integración con LLM |
-| MiniLM | Generación de embeddings |
-| Qdrant | Búsqueda vectorial |
-| PostgreSQL | Estado estructurado y persistencia |
-| Gemini | Generación de respuestas fundamentadas |
+---
 
-<details>
-<summary><strong>Ver flujos detallados de ingesta y conversación</strong></summary>
+## Pipeline de IA
 
-### Ingesta documental
+El sistema utiliza dos flujos relacionados pero independientes: **ingesta documental** y **consulta RAG**.
 
 ```text
+INGESTA
 PDF
-↓
-Validación
-↓
-SHA-256
-↓
-Persistencia del archivo
-↓
-PyPDFLoader
-↓
-Chunking
-↓
-Embeddings
-↓
-Qdrant
-↓
-Metadata en PostgreSQL
+→ Parsing con PyPDFLoader
+→ Chunking
+→ Embeddings MiniLM
+→ Qdrant
+
+CONSULTA
+Pregunta + contexto conversacional reciente
+→ Reescritura a consulta independiente
+→ Embedding de consulta
+→ Retrieval semántico en Qdrant
+→ Top-K fragmentos relevantes
+→ Gemini
+→ Respuesta + fuentes
 ```
 
-### Flujo conversacional
+### Parámetros técnicos principales
 
-```text
-Pregunta del usuario
-↓
-Historial reciente
-↓
-Query rewriting
-↓
-Embedding de consulta
-↓
-Qdrant
-↓
-Top-K fragmentos
-↓
-Prompt grounding
-↓
-Gemini
-↓
-Respuesta + fuentes
-↓
-Persistencia
-```
+| Componente | Configuración |
+|---|---|
+| Chunking | `RecursiveCharacterTextSplitter` · `chunk_size=800` · `chunk_overlap=150` |
+| Embeddings | `paraphrase-multilingual-MiniLM-L12-v2` · 384 dimensiones |
+| Similaridad | Coseno |
+| Vector store | Qdrant Local · colección `enterprise_documents` |
+| LLM activo | `gemini-2.5-flash` · `temperature=0` |
+| Contexto conversacional | 10 mensajes recientes |
 
-</details>
+El mismo modelo de embeddings se utiliza para documentos y consultas, manteniendo ambas representaciones en el mismo espacio vectorial. El historial completo se conserva en PostgreSQL, pero solo el contexto reciente participa en la conversación para controlar tamaño del prompt, latencia y consumo de tokens.
 
 ---
 
@@ -370,44 +119,16 @@ Persistencia
 
 | Capa | Tecnología | Propósito |
 |---|---|---|
-| Lenguaje | Python 3.13 | Backend y lógica de IA |
-| Framework RAG | LangChain | Orquestación RAG e integración LLM |
-| Parseo documental | PyPDFLoader | Ingesta de PDF |
-| Chunking | RecursiveCharacterTextSplitter | Segmentación de documentos |
-| Embeddings | sentence-transformers / MiniLM multilingüe | Embeddings locales de 384 dimensiones |
-| Base vectorial | Qdrant Local | Almacenamiento y búsqueda semántica |
-| LLM | Gemini API · gemini-2.5-flash | Generación fundamentada |
-| LLM alternativo | Mistral AI | Proveedor intercambiable |
-| API | FastAPI | Backend REST |
-| ORM | SQLAlchemy | Persistencia de modelos |
-| PostgreSQL driver | psycopg | Conectividad |
-| Base relacional | PostgreSQL | Conversaciones, mensajes, fuentes y documentos |
+| Backend / IA | Python 3.13 | Lógica de aplicación y pipeline RAG |
+| Framework RAG | LangChain | Orquestación RAG e integración con LLM |
+| Procesamiento PDF | PyPDFLoader + RecursiveCharacterTextSplitter | Parsing y segmentación documental |
+| Embeddings | sentence-transformers / MiniLM multilingüe | Representación vectorial local |
+| Base vectorial | Qdrant Local | Indexación y búsqueda semántica |
+| LLM | Gemini API · `gemini-2.5-flash` | Generación fundamentada |
+| API | FastAPI | Backend REST y orquestación |
+| Persistencia | PostgreSQL + SQLAlchemy | Conversaciones, mensajes, fuentes y documentos |
 | Frontend | React + Vite + TypeScript | Aplicación web |
-| UI conversacional | assistant-ui | Thread, mensajes y composer |
-| Estilos | Tailwind CSS v4 + shadcn/ui | Interfaz empresarial |
-| Gestor de paquetes | pnpm | Dependencias frontend |
-
----
-
-## Decisiones de diseño clave
-
-**¿Por qué RAG y no fine-tuning?**  
-La documentación empresarial cambia con frecuencia. RAG permite actualizar el conocimiento sin reentrenar el modelo, mantener el material fuente gestionado externamente y citar evidencia.
-
-**¿Por qué LangChain y no una arquitectura agentic?**  
-El flujo actual es principalmente lineal: cargar → dividir → generar embeddings → recuperar → generar. LangChain cubre esa necesidad sin añadir complejidad innecesaria.
-
-**¿Por qué Qdrant?**  
-Permite búsqueda vectorial, payloads de metadata, filtrado y una ruta clara hacia Qdrant Server cuando el sistema requiera concurrencia.
-
-**¿Por qué MiniLM multilingüe?**  
-Permite embeddings multilingües, ejecución local, menor dependencia de APIs externas y costo nulo por llamada de embedding.
-
-**¿Por qué separar PostgreSQL de Qdrant?**  
-PostgreSQL gestiona estado estructurado; Qdrant se especializa en recuperación vectorial. Cada tecnología mantiene una responsabilidad clara.
-
-**¿Por qué assistant-ui?**  
-Permite construir una experiencia de chat moderna sin sustituir el backend, el RAG ni los contratos de API propios.
+| UI | assistant-ui + Tailwind CSS v4 + shadcn/ui | Experiencia conversacional e interfaz |
 
 ---
 
@@ -415,7 +136,7 @@ Permite construir una experiencia de chat moderna sin sustituir el backend, el R
 
 ### Prevención de duplicados
 
-Se calcula un hash **SHA-256** sobre el contenido binario antes del parsing, los embeddings o la indexación.
+Antes del parsing, la generación de embeddings y la indexación se calcula un hash **SHA-256** sobre el contenido binario del archivo.
 
 | Caso | Resultado |
 |---|---|
@@ -423,13 +144,9 @@ Se calcula un hash **SHA-256** sobre el contenido binario antes del parsing, los
 | Mismo archivo + nombre diferente | Rechazado |
 | Contenido diferente + mismo nombre | Permitido |
 
-Respuesta:
+Los duplicados devuelven `409 Conflict`, evitando procesamiento innecesario.
 
-```http
-409 Conflict
-```
-
-### Eliminación segura
+### Eliminación consistente
 
 `DELETE /documents/{document_id}` elimina el documento de:
 
@@ -439,37 +156,11 @@ Qdrant
 data/documents/
 ```
 
-Esto evita metadata, vectores o archivos huérfanos.
+Esto evita registros, vectores o archivos huérfanos y garantiza que el RAG deje de recuperar información perteneciente al documento eliminado.
 
-<details>
-<summary><strong>Ver validación de eliminación</strong></summary>
+### Seguridad básica
 
-Se comprobó:
-
-```text
-PostgreSQL
-→ registro eliminado
-
-data/documents/
-→ archivo eliminado
-
-Qdrant
-→ 0 puntos para el document_id eliminado
-```
-
-Además, el RAG dejó de recuperar información del documento eliminado.
-
-</details>
-
-### Seguridad y control
-
-- las claves de API permanecen en backend;
-- el frontend no expone credenciales de Gemini ni PostgreSQL;
-- los embeddings se generan localmente;
-- la base documental puede actualizarse sin fine-tuning;
-- las respuestas pueden mantener trazabilidad documental;
-- los duplicados se detectan antes de operaciones costosas;
-- el contexto conversacional se limita para controlar tokens y latencia.
+Las credenciales de Gemini y PostgreSQL permanecen en el backend y no se exponen al frontend. Los embeddings se generan localmente y la documentación puede actualizarse sin fine-tuning.
 
 ---
 
@@ -477,7 +168,6 @@ Además, el RAG dejó de recuperar información del documento eliminado.
 
 ```text
 GET    /health
-
 POST   /chat
 
 GET    /conversations
@@ -491,33 +181,7 @@ POST   /documents
 DELETE /documents/{id}
 ```
 
-<details>
-<summary><strong>Ver ejemplo de POST /chat</strong></summary>
-
-```json
-{
-  "question": "¿Cuántos días de vacaciones corresponden después de un año?",
-  "conversation_id": 3
-}
-```
-
-`conversation_id` es opcional:
-
-```text
-sin conversation_id
-→ crea una nueva conversación
-
-con conversation_id
-→ reutiliza la conversación existente
-```
-
-La respuesta incluye:
-
-- `conversation_id`;
-- respuesta fundamentada;
-- fuentes.
-
-</details>
+La documentación interactiva de la API está disponible mediante Swagger en `/docs` al ejecutar el backend.
 
 ---
 
@@ -535,125 +199,45 @@ pip install -r backend/requirements.txt
 
 # 3. Variables de entorno
 GOOGLE_API_KEY=your_gemini_api_key
-MISTRAL_API_KEY=your_mistral_api_key
+MISTRAL_API_KEY=your_mistral_api_key  # opcional
 DATABASE_URL=postgresql+psycopg://postgres:your_password@localhost:5432/enterprise_rag
 
-# 4. Backend
+# 4. Ejecutar backend
 python -m uvicorn backend.app.main:app --reload
 
-# 5. Frontend
+# 5. Ejecutar frontend
 cd frontend
 pnpm install
 pnpm dev
 ```
 
-Swagger:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Frontend:
-
-```text
-http://127.0.0.1:5173
-```
-
-<details>
-<summary><strong>Ver estructura principal del proyecto</strong></summary>
-
-```text
-enterprise-rag-assistant/
-│
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── database/
-│   │   ├── rag/
-│   │   ├── services/
-│   │   └── main.py
-│   └── requirements.txt
-│
-├── frontend/
-│   ├── src/
-│   ├── package.json
-│   └── vite.config.ts
-│
-├── data/
-│   ├── documents/
-│   ├── qdrant/
-│   └── sample_docs/
-│
-├── tests/
-├── .env.example
-├── README.es.md
-└── README.md
-```
-
-</details>
+- Swagger: `http://127.0.0.1:8000/docs`
+- Frontend: `http://127.0.0.1:5173`
 
 ---
 
 ## Validación técnica
 
-Se validaron los principales flujos de la aplicación:
+Se validaron los principales flujos del sistema:
 
-- recuperación correcta sobre documentos de RR.HH.;
-- recuperación correcta sobre documentación de ciberseguridad;
-- cambio de tema dentro de una misma conversación;
-- resolución de preguntas de seguimiento;
-- comportamiento de “sin respuesta”;
-- persistencia de conversaciones y fuentes;
-- detección de duplicados;
-- eliminación consistente de documentos;
-- actualización de la base de conocimientos tras eliminación.
+- retrieval sobre documentación de RR.HH. y ciberseguridad;
+- cambio de tema y preguntas de seguimiento dentro de una conversación;
+- comportamiento de **sin respuesta** cuando no existe evidencia suficiente;
+- persistencia de conversaciones, mensajes y fuentes;
+- detección de documentos duplicados;
+- eliminación consistente y actualización efectiva de la base de conocimientos.
 
-<details>
-<summary><strong>Ver criterios de evaluación</strong></summary>
-
-- **Retrieval quality:** los fragmentos recuperados deben contener evidencia relevante.
-- **Groundedness:** la respuesta debe estar respaldada por el contexto.
-- **Source traceability:** debe ser posible identificar documento y página.
-- **No-answer behavior:** el sistema debe evitar inventar respuestas sin evidencia.
-- **Conversational robustness:** los follow-ups no deben degradar retrieval.
-- **Document lifecycle correctness:** la eliminación debe propagarse a todas las capas.
-- **Latency:** la respuesta debe ser adecuada para interacción en tiempo real.
-
-</details>
+La validación se centró en **calidad de retrieval, groundedness, trazabilidad de fuentes, robustez conversacional y consistencia del ciclo de vida documental**.
 
 ---
 
 ## Roadmap
 
-Próximas mejoras técnicas:
-
-- soporte multiformato: DOCX, TXT y Markdown;
-- retrieval consciente de metadata;
-- búsqueda híbrida;
-- reranking;
-- evaluación RAG automatizada;
-- datasets de evaluación y pruebas de regresión;
-- observabilidad con LangSmith o Langfuse;
-- medición de latencia y costo por consulta;
-- autenticación;
-- RBAC;
-- control de acceso por documento;
-- Qdrant Server para concurrencia;
-- despliegue en producción.
-
-<details>
-<summary><strong>Ver consideraciones técnicas pendientes</strong></summary>
-
-Actualmente:
-
-- los prompts sugeridos del frontend aún son estáticos;
-- las consultas dirigidas a un documento específico pueden beneficiarse de filtrado por `document_id`;
-- las preguntas administrativas sobre la base de conocimientos pueden resolverse mejor mediante routing a PostgreSQL;
-- el Top-K todavía puede incluir fragmentos secundarios de menor relevancia.
-
-Estas mejoras forman parte del hardening progresivo del sistema.
-
-</details>
+- búsqueda híbrida y reranking para mejorar retrieval;
+- evaluación RAG automatizada y pruebas de regresión;
+- observabilidad con LangSmith o Langfuse, incluyendo latencia y costo por consulta;
+- autenticación, RBAC y control de acceso por documento;
+- soporte multiformato y evolución hacia Qdrant Server / despliegue productivo.
 
 ---
 
