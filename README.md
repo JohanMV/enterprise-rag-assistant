@@ -12,7 +12,7 @@
 
 > **Aplicación empresarial de Generación Aumentada por Recuperación (RAG) para consultar documentación interna mediante respuestas fundamentadas, memoria conversacional, trazabilidad de fuentes y gestión del ciclo de vida de documentos.**
 
-[🇬🇧 English version](README.md)
+[🇬🇧 English version](README.en.md)
 
 ## Tabla de contenidos
 
